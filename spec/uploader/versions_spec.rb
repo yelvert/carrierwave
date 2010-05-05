@@ -101,6 +101,25 @@ describe CarrierWave::Uploader do
     end
 
   end
+  
+  describe 'with a dynamic version' do
+    before do
+      @uploader_class.version(:thumb, :if => lambda { false } )
+    end
+    
+    it 'should only have 1 version after caching' do
+      @uploader.cache!(File.open(file_path('test.jpg')))
+      @uploader.versions.should == {}
+    end
+    
+    it 'should store only 1 version of a file' do
+      @uploader.cache!(File.open(file_path('test.jpg')))
+      @uploader.store_path.should == 'uploads/test.jpg'
+      Dir.glob(File.join(File.dirname(@uploader.file.path), '*')).should have(1).element
+      @uploader.versions.should be_empty
+    end
+
+  end
 
   describe 'with a version' do
     before do
@@ -134,6 +153,13 @@ describe CarrierWave::Uploader do
         @uploader.retrieve_from_cache!('20071201-1234-345-2255/test.jpg')
         @uploader.current_path.should == public_path('uploads/tmp/20071201-1234-345-2255/test.jpg')
         @uploader.thumb.current_path.should == public_path('uploads/tmp/20071201-1234-345-2255/thumb_test.jpg')
+      end
+      
+      it 'should only set the versions which meet the criteria' do
+        @uploader_class.instance_variable_set :@versions, nil
+        @uploader_class.version(:thumb, :if => lambda { false } )
+        @uploader.retrieve_from_cache!('20071201-1234-345-2255/test.jpg')
+        @uploader.versions.should be_empty
       end
 
       it "should set store_path with versions" do
@@ -281,6 +307,13 @@ describe CarrierWave::Uploader do
 
         @uploader_class.storage.stub!(:new).with(@uploader).and_return(@storage)
         @uploader_class.version(:thumb).storage.stub!(:new).with(@uploader.thumb).and_return(@thumb_storage)
+      end
+      
+      it 'should only set the versions which meet the criteria' do
+        @uploader_class.instance_variable_set :@versions, nil
+        @uploader_class.version(:thumb, :if => lambda { false } )
+        @uploader.retrieve_from_store!('monkey.txt')
+        @uploader.versions.should be_empty
       end
 
       it "should set the current path" do

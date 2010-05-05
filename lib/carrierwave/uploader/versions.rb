@@ -13,6 +13,7 @@ module CarrierWave
         after :remove, :remove_versions!
         after :retrieve_from_cache, :retrieve_versions_from_cache!
         after :retrieve_from_store, :retrieve_versions_from_store!
+        
       end
 
       module ClassMethods
@@ -20,6 +21,11 @@ module CarrierWave
         def version_names
           @version_names ||= []
         end
+        
+        def version_conditions
+          @version_conditions ||= {}
+        end
+        
 
         ##
         # Adds a new version to this uploader
@@ -29,12 +35,13 @@ module CarrierWave
         # [name (#to_sym)] name of the version
         # [&block (Proc)] a block to eval on this version of the uploader
         #
-        def version(name, &block)
+        def version(name, options = {}, &block)
           name = name.to_sym
           unless versions[name]
             versions[name] = Class.new(self)
             versions[name].version_names.push(*version_names)
             versions[name].version_names.push(name)
+            version_conditions[name] = options
             class_eval <<-RUBY
               def #{name}
                 versions[:#{name}]
@@ -70,6 +77,15 @@ module CarrierWave
           @versions[name] = klass.new(model, mounted_as)
         end
         @versions
+      end
+      
+      def version_conditions
+        return @version_conditions if @version_conditions
+        @version_conditions = {}
+        self.class.version_conditions.each do |name, conditions|
+          @version_conditions[name] = conditions
+        end
+        @version_conditions
       end
 
       ##
@@ -120,6 +136,7 @@ module CarrierWave
       end
 
     private
+      
 
       def full_filename(for_file)
         [version_name, super(for_file)].compact.join('_')
@@ -128,28 +145,51 @@ module CarrierWave
       def full_original_filename
         [version_name, super].compact.join('_')
       end
-
+      
       def cache_versions!(new_file)
         versions.each do |name, v|
-          v.send(:cache_id=, cache_id)
-          v.cache!(new_file)
+          if satisfies_version_requirements!(name, new_file)
+            v.send(:cache_id=, cache_id)
+            v.cache!(new_file)
+          end
         end
       end
-
+      
       def store_versions!(new_file)
-        versions.each { |name, v| v.store!(new_file) }
+        versions.each do |name, v| 
+          v.store!(new_file) if satisfies_version_requirements!(name, new_file)
+        end
       end
 
       def remove_versions!
         versions.each { |name, v| v.remove! }
       end
-
+      
       def retrieve_versions_from_cache!(cache_name)
-        versions.each { |name, v| v.retrieve_from_cache!(cache_name) }
+        versions.each do |name, v| 
+          v.retrieve_from_cache!(cache_name) if satisfies_version_requirements!(name)
+        end
       end
 
       def retrieve_versions_from_store!(identifier)
-        versions.each { |name, v| v.retrieve_from_store!(identifier) }
+        versions.each do |name, v| 
+          v.retrieve_from_store!(identifier) if satisfies_version_requirements!(name)
+        end
+      end
+      
+      def satisfies_version_requirements!(name, new_file = nil, remove = true)
+        file_to_check = new_file.nil? ? file : new_file
+        if version_conditions[name] && version_conditions[name][:if]
+          cond = version_conditions[name][:if]
+          if cond.call(file_to_check)
+            return true
+          else
+            versions.delete(name) if remove
+            return false
+          end
+        else
+          true
+        end
       end
 
     end # Versions
