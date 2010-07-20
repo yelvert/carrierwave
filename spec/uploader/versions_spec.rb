@@ -104,19 +104,41 @@ describe CarrierWave::Uploader do
   
   describe 'with a dynamic version' do
     before do
-      @uploader_class.version(:thumb, :if => lambda { false } )
+      @uploader_class.version(:thumb, :if => :schmoo?)
     end
-    
-    it 'should only have 1 version after caching' do
-      @uploader.cache!(File.open(file_path('test.jpg')))
-      @uploader.versions.should == {}
+   
+    context "when condition returns false" do
+      before do
+        @uploader.stub(:schmoo?).and_return(false)
+      end
+
+      it 'should not cache the version' do
+        @uploader.cache!(File.open(file_path('test.jpg')))
+        @uploader.versions[:thumb].should be_blank
+      end
+      
+      it 'should not store the version' do
+        @uploader.cache!(File.open(file_path('test.jpg')))
+        @uploader.store!
+        @uploader.versions[:thumb].should be_blank
+      end
     end
-    
-    it 'should store only 1 version of a file' do
-      @uploader.cache!(File.open(file_path('test.jpg')))
-      @uploader.store_path.should == 'uploads/test.jpg'
-      Dir.glob(File.join(File.dirname(@uploader.file.path), '*')).should have(1).element
-      @uploader.versions.should be_empty
+
+    context "when condition returns true" do
+      before do
+        @uploader.stub(:schmoo?).and_return(true)
+      end
+
+      it 'should cache the version' do
+        @uploader.cache!(File.open(file_path('test.jpg')))
+        @uploader.versions[:thumb].should_not be_blank
+      end
+      
+      it 'should store the version' do
+        @uploader.cache!(File.open(file_path('test.jpg')))
+        @uploader.store!
+        @uploader.versions[:thumb].should_not be_blank
+      end
     end
 
   end
@@ -155,13 +177,6 @@ describe CarrierWave::Uploader do
         @uploader.thumb.current_path.should == public_path('uploads/tmp/20071201-1234-345-2255/thumb_test.jpg')
       end
       
-      it 'should only set the versions which meet the criteria' do
-        @uploader_class.instance_variable_set :@versions, nil
-        @uploader_class.version(:thumb, :if => lambda { false } )
-        @uploader.retrieve_from_cache!('20071201-1234-345-2255/test.jpg')
-        @uploader.versions.should be_empty
-      end
-
       it "should set store_path with versions" do
         @uploader.retrieve_from_cache!('20071201-1234-345-2255/test.jpg')
         @uploader.store_path.should == 'uploads/test.jpg'
@@ -309,13 +324,6 @@ describe CarrierWave::Uploader do
         @uploader_class.version(:thumb).storage.stub!(:new).with(@uploader.thumb).and_return(@thumb_storage)
       end
       
-      it 'should only set the versions which meet the criteria' do
-        @uploader_class.instance_variable_set :@versions, nil
-        @uploader_class.version(:thumb, :if => lambda { false } )
-        @uploader.retrieve_from_store!('monkey.txt')
-        @uploader.versions.should be_empty
-      end
-
       it "should set the current path" do
         @uploader.retrieve_from_store!('monkey.txt')
         @uploader.current_path.should == '/path/to/somewhere'
